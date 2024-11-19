@@ -11,7 +11,8 @@
 #
 # 数学用語の英語表現はややこしいのでここにメモしておく。
 #
-#   整数	: integer
+#   自然数	: natural number ( 正の整数 )
+#   整数	: integer ( 自然数、0、負の整数 を包含 )
 #   偶数	: even number
 #   奇数	: odd number
 #   素数	: prime number
@@ -24,6 +25,13 @@
 #   分数	: fraction	( 本義は「端数」であり、小数が fraction と呼ばれることもある。 )
 #   分子	: numerator
 #   分母	: denominator
+#   有理数	: rational number
+#   無理数	: irrational number
+#
+#   実数	: real number ( 整数、有理数 ( 分数 )、無理数 を包含 )
+#   虚数	: imaginary number
+#   複素数	: complex number ( 実数、虚数 を包含 )
+#   虚数単位	: imaginary unit
 #
 #   足し算	: addition
 #   引き算	: subtraction	( 「暗算」の意味で使われることもある。 )
@@ -48,7 +56,7 @@
 #   被除数	: diviend
 #
 #   暗算	: subtraction	( 「引き算」と同じ。 )
-#   		  mental arithmetic ( mentral calculation )
+#   		  mental arithmetic ( mental calculation )
 #   筆算	: calculation on paper
 #   		  calculation by writing
 #
@@ -78,7 +86,7 @@
 #   次数	: degree ( 多項式の次数 )
 #   係数	: coefficients
 #   最高次係数	: leading coefficient  ( 頭項係数 )
-#   定数項	: constant term ( contsant )
+#   定数項	: constant term ( constants )
 #   変数	: variables ( indeterminates )
 #   独立変数	: independent variable ( 多項式関数 y == f(x) の x のこと。 )
 #   従属変数	: dependent variable   ( 多項式関数 y == f(x) の y のこと。 )
@@ -426,7 +434,7 @@ use Carp ;
 
 use POSIX qw() ;
 
-our $VERSION = '0.01' ;
+our $VERSION = '0.02' ;
 our @ISA = qw(Exporter) ;
 our @EXPORT = qw(
         decimal fraction complex vector matrix complex_vector complex_matrix
@@ -486,9 +494,10 @@ use constant {
 	INT_BASE	=> 10000000 ,
 } ;
 
-my $_DIGLEN = length( INT_BASE ) - 1 ;	# 桁を区切る長さ
+my $_DIGLEN = length( INT_BASE ) - 1 ;		# 桁を区切る長さ
 
-our $DECIMAL_PART_LENGTH_LIMIT = 40 ;	# 商を求める際の小数点以下の桁数の上限
+our $DECIMAL_PART_LENGTH_LIMIT = 40 ;		# 商を求める際の小数点以下の桁数の上限
+our $DENOMINATOR_LIMIT = 1_000_000_000 ;	# 分数の分母に用いる整数値の上限 ( 有効桁数 15 桁程度の精度なる )
 
 =head1 Functions for construction.
 
@@ -1184,7 +1193,10 @@ sub integer_digits {
 	my $obj = $self->copy()->_regulate() ;
 
 	my $digits = ( ( @{ $obj->{'val'} } - 1 ) * $_DIGLEN ) + length( $obj->{'val'}->[-1] + 0 ) ;
-	$digits -= $self->{'dlen'} ;
+	$digits = ( $digits > $self->{'dlen'} )
+		? $digits - $self->{'dlen'}
+		: 1
+	;
 
 	return $digits ;
 }
@@ -5781,11 +5793,10 @@ sub modmult {
 
 Return ( $x / $num ) % $modulus 
 
-  $x->moddivide( $y , $m ) == ( $x / $y ) % $m
-                           == $x % ( $m / gcd( $y , $m ) )
+  $x->moddivide( $y , $m ) == $x->modmult($y->modinverse($m), $m)
 
-  print decimal( 10 )->moddivide( 2 , 3 ) ;           # 10 % ( 3 / gcd(   2 , 3 ) ) == 10 % 3 == 1 
-  print decimal( 1 )->moddivide( -11 , 3 ) ;          #  1 % ( 3 / gcd( -11 , 3 ) ) == 10 % 3 == 1
+  print decimal( 10 )->moddivide( 2 , 3 ) ;           # 2
+  print decimal( 1 )->moddivide( -11 , 3 ) ;          # 1
 
 =cut
 
@@ -5793,6 +5804,8 @@ sub moddivide {
 	#-----------------------------------------------------------------------
 	#
 	# 合同式の除法
+	#
+	#   moddiv(x, y, m) == modmult(x, modinverse(y, m), m)
 	#
 	#-----------------------------------------------------------------------
 	my( $x , $y , $m ) = @_ ;
@@ -5804,7 +5817,8 @@ sub moddivide {
 		return undef			unless ( $_->is_integer() ) ;
 	}
 
-	my $r = $x % ( $m / $m->gcd( $y ) ) ;
+	my $y_inv = $y->modinverse() ;
+	my $r = (defined $y_inv) ? $x->modmult($y, $m) : undef ;
 
 	return $r ;
 }
@@ -7216,11 +7230,19 @@ sub factorial {
 	#  
 	#  奇数列への落とし込み
 	#
-	#    任意の正の整数 x は、
+	#    階乗数は 2 の冪と奇数の積で表すことができる。
 	#
-	#      x == 2^p + d           ( p は p >= 0 の整数、 d は d > 0 の整数。 )
+	#      0! == 2^0 * 1
+	#      1! == 2^0 * 1
+	#      2! == 1 * 2 == 2^1 * 1
+	#      3! == 1 * 2 * 3 == 2^1 * 3
+	#      4! == 1 * 2 * 3 * 4 == 2^3 * 3
+	#      5! == 1 * 2 * 3 * 4 * 5 == 2^3 * 15
+	#      6! == 1 * 2 * 3 * 4 * 5 * 6 == 2^4 * 45
 	#
-	#    と表現できる。
+	#    任意の階乗数 n! は n が大きくなるにつれてビット配列に直した時の末尾 0 が伸びていく形になる。
+	#    この時の末尾の 0 の数を 2 の冪乗数 p として抑えながらビットシフトして桁を落とすことができる。
+	#    こうすることで、途中の演算を実質的に奇数列の乗算に落とし込むことができる。
 	#
 	#    階乗演算に使用する数列を
 	#
@@ -7228,17 +7250,17 @@ sub factorial {
 	#      x[0] == m
 	#      x[k] == m^2 - k^2               ( k == 1 -> n - m )
 	#
-	#    とした後、
+	#    とした時、
 	#
-	#      x[k] == 2^(p[k]) * d[k]         ( k == 0 -> n - m )
+	#       n! == m * Π( m^2 - k^2 )
+	#          == 2^p[k] * d[k]              ( d[k] は奇数 )
 	#
-	#    と変換すると、
+	#    となる p[k], d[k] が存在し、ここから、
 	#
-	#      n! == Π( x[k] )
-	#         == Π( 2^(p[k]) * d[k] )
-	#         == Π( d[k] ) * 2^( Σ(p[k]) )          ( k == 0 -> n - m )
+	#       n! == Π( d[k] ) * 2^( Σ(p[k]) )  ( k == 0 -> n - m )
+	#          == Π( d[k] ) << Σ(p[k])       ( k == 0 -> n - m )
 	#
-	#    と定義することができる。
+	#    と定義できるということ。
 	#
 	#-----------------------------------------------------------------------
 	my( $n ) = @_ ;
@@ -7266,11 +7288,11 @@ sub factorial {
 	#
 	# 階乗の演算では 1 の有無が結果に影響しないため、このような方法が採れる。
 	#
-	# 中央値 m が決定したら、 m から n へ向かう距離 i を取りながら
+	# 中央値 m が決定したら、 m から n へ向かう距離 i を取りながら奇数の総積 r = m を初期値として
 	#
-	#   j == ( m + i ) * ( m - i )
-	#     == m^2 - i^2
-	#     == 2^p + d
+	#   j == r * ( m + i ) * ( m - i )
+	#     == r * ( m^2 - i^2 )
+	#     == 2^p * d
 	#
 	#   r *= d
 	#   pow += p
@@ -7295,9 +7317,8 @@ sub factorial {
 		;
 
 		my $p = 0 ;
-		if ( ( $j &  1 ) == 0 ) { $p = ntz( $j ) ; $j >>= $p->value() ; }
-
 		$r *= $j ;
+		if ( $r->is_even ) { $p = ntz($r) ; $r >>= $p->value() ; }
 		$p2 += $p ;
 	}
 
@@ -10204,7 +10225,7 @@ sub pi_chudnovsky {
 	#
 	#      m == floor( ( n1 + n2 ) / 2 )
 	#
-	#    とするのが良いらしい ( Binary Splitting 法 ) のだが、再帰呼び出しで実装すると、すぐに Depp recursing を引き起こしてしまう。
+	#    とするのが良いらしい ( Binary Splitting 法 ) のだが、再帰呼び出しで実装すると、すぐに Deep recursing を引き起こしてしまう。
 	#
 	#-----------------------------------------------------------------------
 	my $dlen = ( ref( $_[0] ) ) ? $_[1] : $_[0] ;
@@ -10800,7 +10821,7 @@ sub ln10 {
 	# より細かい値が要求された場合には再計算する。
 	#
 	if ( $dlen > 128 ) {
-		$r = __PACKAGE__->new( 10 )->ln() ;
+		$r = __PACKAGE__->new( 10 )->ln( $dlen ) ;
 	}
 
 	return $r->round_down( $dlen ) ;
@@ -12482,6 +12503,7 @@ sub is_twin_prime {
 	$n = __PACKAGE__->new( $n )	unless ( ref( $n ) eq __PACKAGE__ ) ;
 	return undef			unless ( defined $n ) ;
 
+	return 0	if ( $n < 2 ) ;
 	return 1	if ( $n =~ /^[35]$/ ) ;
 
 	my $m = $n % 6 ;
@@ -12493,7 +12515,7 @@ sub is_twin_prime {
 	;
 
 	foreach ( @p ) {
-		return 0	if ( $_->{'val'}->[0] =~ /[05]$/ ) ;
+		return 0	if ( $_ > 5 and  $_->{'val'}->[0] =~ /[05]$/ ) ;
 	}
 
 	#
@@ -12565,7 +12587,7 @@ sub willson_prime_test {
 	foreach ( my $i = __PACKAGE__->new( 2 ) ; $i < $n ; $i++ ) {
 		$m *= $i ;
 		$m %= $n ;
-		last	if ( $n->is_zero() ) ;
+		last	if ( $m->is_zero() ) ;
 	}
 
 	return ( $m == ( $n - 1 ) ) ? 1 : 0 ;
@@ -13504,8 +13526,10 @@ sub elliptic_factor {
 	my $ec_add = sub {
 		my( $p , $q , $coef ) = @_ ;
 
-		return ( $q , __PACKAGE__->new( 1 ) )	if ( ref( $p ) eq 'HASH' ) ;
-		return ( $p , __PACKAGE__->new( 1 ) )	if ( ref( $q ) eq 'HASH' ) ;
+		#return ( $q , __PACKAGE__->new( 1 ) )	if ( ref( $p ) eq 'HASH' ) ;
+		#return ( $p , __PACKAGE__->new( 1 ) )	if ( ref( $q ) eq 'HASH' ) ;
+		return ( $q , __PACKAGE__->new( 1 ) )	unless ( ref( $p ) eq 'HASH' ) ;
+		return ( $p , __PACKAGE__->new( 1 ) )	unless ( ref( $q ) eq 'HASH' ) ;
 
 		foreach ( $p , $q ) {
 			$_->{'x'} %= $n ;
@@ -13911,7 +13935,7 @@ sub squfof {
 		#my @cf = @{ $sq->cfraction( 100 ) } ;
 		$w->[0] = $sq->floor() ;					# w[0] = floor( sqrt( k * n ) )
 		$p->[0] = $w->[0]->copy() ;					# p[0] = w[0]
-		$q->[0] = __PACKAGE__->new( 1 ) ;				# p[1] = 1
+		$q->[0] = __PACKAGE__->new( 1 ) ;				# q[0] = 1
 		$q->[1] = $n->multiply( $k ) - ( $p->[0]->power( 2 ) ) ;	# q[1] = ( k * n ) - ( p[0] * p[0] )
 
 		my $pq = [] ;
@@ -16702,7 +16726,7 @@ sub fraction_cf {
 		#
 		# 分子を連分数展開
 		#
-		my @cf = @{ $numer->cfraction( 100 ) } ;
+		my @cf = @{ $numer->cfraction( 100 , 1 ) } ;
 		foreach my $i ( 1 .. ( $#cf - 1 ) ) {
 			if ( @{ $cf[ $i ]->{'val'} } > 2 ) {
 				@cf = @cf[ 0 .. ( $i - 1 ) ] ;
@@ -17100,7 +17124,7 @@ sub cfraction {
 	#     cfraction( PI )  == [ 3 ; 7 , 15 , 1 , 292 , 1 , 1 , 1 , 2 , 1 , 3 , 1 , 14 , 2 , 1 , 1 , 2 , 2 , 2 , 2 , 1 , 84 , ...... ]
 	#
 	#-------------------------------------------------------------------------------
-	my( $decimal , $depth ) = @_ ;
+	my( $decimal , $depth , $quick ) = @_ ;
 
 	$decimal = __PACKAGE__->new( $decimal )	unless ( ref( $decimal ) eq __PACKAGE__ ) ;
 	return []	unless ( defined $decimal ) ;
@@ -17117,6 +17141,9 @@ sub cfraction {
 	my $one = __PACKAGE__->new( 1 ) ;
 	foreach ( 1 .. $depth ) {
 		my $i = __PACKAGE__->new( $decimal->integer_part()->value() ) ;
+
+		last	if ( $quick and $i->integer_digits() >= 7 ) ;	# 収束点と思しき箇所で打ち切る。
+
 		push( @r , $i ) ;
 
 		$decimal = __PACKAGE__->new( $decimal->decimal_part()->value() ) ;
@@ -17125,6 +17152,34 @@ sub cfraction {
 	}
 
 	return [ @r ] ;
+}
+
+sub cfraction_iter {
+	#-------------------------------------------------------------------------------
+	#
+	# 連分数展開イテレータ
+	#
+	#   処理内容は cfraction と全く同じ。
+	#
+	#-------------------------------------------------------------------------------
+	my( $decimal , $depth ) = @_ ;
+
+	$decimal = __PACKAGE__->new( $decimal )	unless ( ref( $decimal ) eq __PACKAGE__ ) ;
+	return []	unless ( defined $decimal ) ;
+
+	$depth = 100	unless ( defined $depth ) ;
+	my $count = 0 ;
+	my $one = __PACKAGE__->new( 1 ) ;
+
+	return sub {
+		return undef	if ( $decimal->is_zero() ) ;
+		return undef	if ( ++$count >= $depth ) ;
+
+		my $i = __PACKAGE__->new( $decimal->integer_part()->value() ) ;
+		$decimal = __PACKAGE__->new( $decimal->decimal_part()->value() ) ;
+		$decimal = $one->divide( $decimal )	if ( ! $decimal->is_zero() ) ;
+		return $i ;
+	} ;
 }
 
 #-------------------------------------------------------------------------------
@@ -19953,7 +20008,7 @@ sub intt { return ntt( @_ ) ; }
 
 			while ( $m > 0 ) {
 				my $v = $m * INT_BASE ;
-				( $d , $m ) = ( CORE::int( $v / $tp ) , $m % $tp ) ;
+				( $d , $m ) = ( CORE::int( $v / $tp ) , $v % $tp ) ;
 				unshift( @{ $obj->{'val'} } , $d ) ;
 				$obj->{'dlen'} += $_DIGLEN ;
 			}
@@ -21556,7 +21611,7 @@ sub intt { return ntt( @_ ) ; }
 		#   w[8] == w[0]
 		#
 		#   w[3] == w[ 4 - 1 ]  == { cos => w[1]->{'cos'} * (-1) , sin => w[1]->{'sin'}        }
-		#   w[5] == w[ 8 - 3 ]  == { cos => w[3]                 , sin => w[3]->{'sin'} * (-1) }
+		#   w[5] == w[ 8 - 3 ]  == { cos => w[3]->{'cos'}        , sin => w[3]->{'sin'} * (-1) }
 		#   w[7] == w[ 8 - 1 ]  == { cos => w[1]->{'cos'}        , sin => w[1]->{'sin'} * (-1) }
 		#
 		# と分類することができる。
@@ -22739,6 +22794,9 @@ sub new {
 	#
 	# デフォルトのコンストラクター
 	#
+	# 2024/01/15
+	#   dec2frac の改修に伴い、 is_rational プロパティを追加。
+	#
 	#-----------------------------------------------------------------------
 	my( $self , $n , $d ) = @_ ;
 	my( $class ) = ref( $self ) || $self ;
@@ -22768,6 +22826,7 @@ sub new {
 	my $obj = bless {
 		'n'	=> $f[0] ,	# numerator
 		'd'	=> $f[1] ,	# denominator
+		'is_rational' => 0 ,	# 有理数かどうか
 	} , $class ;
 
 	#
@@ -23175,9 +23234,118 @@ sub reduce {
 sub dec2frac {
 	#-----------------------------------------------------------------------
 	#
+	# 小数値を分数に変換 ( 有理数近似 )
+	#
+	#   連分数展開の過程で仮分数を求める。
+	#
+	# 任意の実数 d を連分数展開した数列の要素 c[k] と d に近似された仮分数 f[k] の関係は以下のようになる。  
+	# 
+	#            p[k]      c[k] * p[k-1] + p[k-2]
+	#   f[k] == ------ == ------------------------         ( k == 2 -> ∞ )
+	#            q[k]      c[k] * q[k-1] + q[k-2]
+	# 
+	# k == 0 および k == 1 の時の仮分数 f[0], f[1] は、以下の通り。
+	# 
+	#            p[0]      c[0]
+	#   f[0] == ------ == ------
+	#            q[0]       1
+	# 
+	#            p[1]               1        c[1] * c[0] + 1
+	#   f[1] == ------ == c[0] + ------- == -----------------
+	#            q[1]             c[1]            c[1]
+	# 
+	# k == 2 を展開すると以下のようになる。
+	# 
+	#            p[2]                  1                         c[2]            c[2] * ( c[0] * c[1] + 1 ) + c[0]
+	#   f[2] == ------ == c[0] + --------------- == c[0] + ----------------- == -----------------------------------
+	#            q[2]                      1                c[1] * c[2] + 1               c[2] * c[1] + 1
+	# 		              c[1] + ------
+	# 		                      c[2]
+	#            c[2] * p[1] + p[0]
+	#        == --------------------
+	# 	     c[2] * q[1] + q[0]
+	# 
+	# これらを整理すると、 f[0], f[1] を以下のように再定義することで k == 1 -> ∞ に拡張することができる。
+	# 
+	#            p[1]      c[1] * p[0] + 1          ---> p[-1] == 1
+	#   f[1] == ------ == -----------------
+	#            q[1]      c[1] * q[0] + 0          ---> q[-1] == 0
+	# 
+	#            p[0]      c[0]      c[0] * 1 + 0   ---> p[-2] == 0
+	#   f[0] == ------ == ------ == --------------
+	#            q[0]       1        c[0] * 0 + 1   ---> q[-2] == 1
+	# 
+	#
+	# 2024/01/15
+	#   差し替え
+	#   以前のロジックは dec2frac_01 として残してある。
+	#
+	#-----------------------------------------------------------------------
+	my( $self ) = @_ ;
+	return undef    unless ( ref( $self ) eq __PACKAGE__ ) ;
+
+	my( $numer , $denom ) = @{ $self }{ 'n' , 'd' } ;
+	return $self	if ( $numer->is_integer() and $denom->is_integer() ) ;
+
+	my $is_rational = 0 ;
+
+	# 変数を初期化
+	my $d = $numer /= $denom ;
+	my $c = [ undef, undef, $d->integer() ] ;
+        my $p = [ new_decimal(0), new_decimal(1), $c->[-1] ] ;
+        my $q = [ new_decimal(1), new_decimal(0), new_decimal(1) ] ;
+
+	# $d が整数の場合
+	if ( $d == $c->[-1] ) {
+		@{ $self }{ 'n', 'd', 'is_rational' } = ($d, new_decimal(1), 1) ;
+		return $self ;
+	}
+
+	# 連分数展開を行いながらその時点の仮分数を求める。
+	while () {
+        	# 有理数の終了条件
+		$d -= $c->[-1] ;
+		if ( $d->is_zero() ) {
+			$is_rational = 1 ;
+			last ;
+		}
+
+		$d = $d->inverse() ;
+        	if ( $d->abs() >= 1_000_000 ) {
+        		$is_rational = 1 ;
+            		last ;
+		}
+
+		#
+		# c[k] == int(d)
+		#
+		#          c[k] * p[-1] + p[-2]
+		# f[k] == ----------------------
+		#          c[k] * q[-1] + q[-2]
+		#
+        	my $ck = $d->integer() ;
+        	my $pk = $ck * $p->[-1] + $p->[-2] ;
+        	my $qk = $ck * $q->[-1] + $q->[-2] ;
+
+		# 無理数の終了条件
+		last	if ( $qk >= $DENOMINATOR_LIMIT ) ;
+
+        	# 二世代分の値を保持 ( 次のループにおける k-1, k-2 の値 )
+		$c = [ $c->[-1], $ck ] ;
+		$p = [ $p->[-1], $pk ] ;
+		$q = [ $q->[-1], $qk ] ;
+	}
+
+	@{ $self }{ 'n', 'd', 'is_rational' } = ( $p->[-1], $q->[-1], $is_rational ) ;
+	return $self ;
+}
+
+sub dec2frac_01 {
+	#-----------------------------------------------------------------------
+	#
 	# 小数値を分数に変換
 	#
-	#   連分数展開を用いて変換する。
+	#   連分数展開とその逆演算を用いて算出する。
 	#
 	#-----------------------------------------------------------------------
 	my( $self ) = @_ ;
@@ -23194,7 +23362,7 @@ sub dec2frac {
 	#      $cf[ 1 .. $#{ $cf } ]	# 連分数展開された分母
 	#
 	$numer /= $denom ;
-	my @cf = @{ $numer->cfraction( 100 ) } ;
+	my @cf = @{ $numer->cfraction( 100 , 1 ) } ;
 	foreach my $i ( 1 .. ( $#cf - 1 ) ) {
 		if ( @{ $cf[ $i ]->{'val'} } > 2 ) {
 			@cf = @cf[ 0 .. ( $i - 1 ) ] ;
@@ -23227,6 +23395,7 @@ sub cf2frac {
 	# 正則連分数 -> 分数
 	#
 	#   正則連分数 ( regular continued fraction ) を表す配列を受け取り、分数に変換して返す。
+	#   ( 正則連分数展開の逆演算 ) 
 	#
 	#   正則連分数は、連分数の分子がすべて 1 であるもの。
 	#   ここでは、引数で与えられた一次元配列の先頭を整数として、残りを連分数の整数部として演算を行う。
@@ -27462,8 +27631,8 @@ sub circle_group {
 	#     w[ k ] == exp( i * --------- )                 ( k == 0 -> n - 1 )
 	#                            n
 	#
-	#     Z[ k ] == z * w[ k ]                           ( k == 0 -> n - 1 ) 
-	#            == z * w[ k-1 ] * w[ 1 ]                ( k == 0 -> n - 1 )
+	#     Z[ k ] == z * w[ k ]                           ( k == 0 -> 1 ) 
+	#            == z * w[ k-1 ] * w[ 1 ]                ( k == 2 -> n - 1 )
 	#
 	#   となり、偏角の整数倍を複素数の乗算を用いた漸化式で表現することができる。
 	#
@@ -35369,7 +35538,7 @@ sub is_unit_vector {
 	my $c = 0 ;
 	foreach ( @{ $v->[0] } ) {
 		return 0	if ( $_ != 0 and $_ != 1 ) ;
-		$c += $_ ;
+		$c += abs($_) ;
 		return 0	if ( $c > 1 ) ;
 	}
 
@@ -42746,7 +42915,7 @@ sub eigens {
 	my( $m ) = @_ ;
 	return ()	unless ( ref( $m ) eq __PACKAGE__ ) ;
 	return ()	unless ( $m->is_square_matrix() ) ;
-	return ()	if ( $m->det() == 0 ) ;
+	#return ()	if ( $m->det() == 0 ) ;
 
 	$m = $m->copy() ;
 
@@ -44813,13 +44982,6 @@ sub forward_elimination {
 	}
 
 	#
-	# ピボット選択によって交換された行を戻す。
-	#
-	foreach my $p ( @{ $pvtr } ) {
-		( $m->[ $p->[0] ] , $m->[ $p->[1] ] ) = ( $m->[ $p->[1] ] , $m->[ $p->[0] ] ) ;
-	}
-
-	#
 	# [ $r , $r ] ( 対角成分 ) の値で $r 行の全ての値を除算する。 ( [ $r , $r ] == 1 になる。)
 	#
 	# この処理の過程で対角成分 [ $r , $r ] の総積を採ることで行列式が算出される。
@@ -44836,6 +44998,13 @@ sub forward_elimination {
 				$m->[ $r ]->[ $c ] /= $v ;
 			}
 		}
+	}
+
+	#
+	# ピボット選択によって交換された行を戻す。
+	#
+	foreach my $p ( @{ $pvtr } ) {
+		( $m->[ $p->[0] ] , $m->[ $p->[1] ] ) = ( $m->[ $p->[1] ] , $m->[ $p->[0] ] ) ;
 	}
 
 	$det = $det->round( $DECIMAL_PART_LENGTH_LIMIT ) ;
