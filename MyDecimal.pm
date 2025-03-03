@@ -18850,7 +18850,7 @@ sub alge_defrated_coef {
 		) ;
 
 		foreach ( @r ) {
-			$_ /= $c[0] ;
+			#$_ /= $c[0] ;
 			$_ = $_->round( $DECIMAL_PART_LENGTH_LIMIT ) ;
 		}
 	}
@@ -36691,9 +36691,9 @@ sub is_toeplitz_matrix {
 	return 1 ;
 }
 
-=head2 is_circular_matrix
+=head2 is_circulant_matrix
 
-If a matrix A is a regular matrix, and it is like a
+If a matrix A is a regulant matrix, and it is like a
 
   A == [ a11 , a12 , a13 , a14 ] == [ a[0] , a[3] , a[2] , a[1] ] 
        [ a21 , a22 , a23 , a24 ]    [ a[1] , a[0] , a[3] , a[2] ] 
@@ -41843,38 +41843,32 @@ sub doolittle {
 	#
 	foreach my $c ( 0 .. ( $cols - 1 ) ) {
 		foreach my $r ( 0 .. ( $rows - 1 ) ) {
-			if ( $r > $c ) {
+			if ( $r <= $c ) {
+				#
+				# U 成分 ( 上三角行列 )
+				#
+				#   U[r,c] = A[r,c] - Σ( L[r,k] * U[k,c] )              ( k == 0 -> c - 1 )
+				#
+				$um->[ $r ]->[ $c ] = $m->[ $r ]->[ $c ] ;
+				foreach my $k ( 0 .. ( $r - 1 ) ) {
+					$um->[ $r ]->[ $c ] -= $lm->[ $r ]->[ $k ] * $um->[ $k ]->[ $c ] ;
+				}
+			}
+			else {
 				#
 				# L 成分 ( 下三角行列 )
 				#
 				#               A[r,c] - Σ( L[r,k] * U[k,c] )
-				#   L[r,c] == ----------------------------------
+				#   L[r,c] == ----------------------------------        ( k == 0 -> c - 1 )
 				#                         U[c,c]
 				#
 				#   k == 0 -> c - 1
 				#
 				$lm->[ $r ]->[ $c ] = $m->[ $r ]->[ $c ] ;
 				foreach my $k ( 0 .. ( $c - 1 ) ) {
-					$lm->[ $r ]->[ $c ]	-= $lm->[ $r ]->[ $k ]
-								*  $um->[ $k ]->[ $c ]
-					;
+					$lm->[ $r ]->[ $c ] -= $lm->[ $r ]->[ $k ] * $um->[ $k ]->[ $c ] ;
 				}
 				$lm->[ $r ]->[ $c ] /= $um->[ $c ]->[ $c ] ;
-			}
-			else {
-				#
-				# U 成分 ( 上三角行列 )
-				#
-				#   U[r,c] = A[r,c] - Σ( L[r,k] * U[k,c] )
-				#
-				#   k == 0 -> r - 1
-				#
-				$um->[ $r ]->[ $c ] = $m->[ $r ]->[ $c ] ;
-				foreach my $k ( 0 .. ( $r - 1 ) ) {
-					$um->[ $r ]->[ $c ]	-= $lm->[ $r ]->[ $k ]
-								*  $um->[ $k ]->[ $c ]
-					;
-				}
 			}
 		}
 	}
@@ -45301,8 +45295,9 @@ sub gauss_jordan_elimination {
 		#
 		foreach my $r1 ( 0 .. ( $rows - 1 ) ) {
 			next	if ( $r1 == $r ) ;
+			my $w = $m->[ $r1 ]->[ $r ] / $m->[ $r ]->[ $r ] ;
 			foreach my $c ( 0 .. ( $cols - 1 ) ) {
-				$m->[ $r1 ]->[ $c ] -= $m->[ $r ]->[ $c ] * $v ;
+				$m->[ $r1 ]->[ $c ] -= $m->[ $r ]->[ $c ] * $w ;
 			}
 		}
 
