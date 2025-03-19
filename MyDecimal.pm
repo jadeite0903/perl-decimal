@@ -18463,8 +18463,13 @@ sub solven {
 		# に変換する。
 		#
 		my $d = ( alge_defrated_coef( @{ $c } ) )[1] ;	# 減次した係数
-		foreach my $i ( 1 .. $#{ $d } ) {
-			$d->[ $i ] = $d->[ $i ]->abs() * ( -1 ) ;
+		if ( defined $d ) {
+		    foreach my $i ( 1 .. $#{ $d } ) {
+		    	$d->[ $i ] = $d->[ $i ]->abs() * ( -1 ) ;
+		    }
+		}
+		else {
+			$d = $c ;
 		}
 		$r = newton( @{ $d } ) ;
 	}
@@ -34265,10 +34270,10 @@ sub householder {
 		#     == a - norm( a ) * ( a[1] / abs( a[1] ) ) * e
 		#
 		my $a1 = $x1->[0]->[0] ;
-		return undef	if ( $a1->abs()->round( $dlen ) == 0 ) ;
-
-		my $b1 = $x1->norm() * ( $a1 / $a1->abs() ) ;
-
+		#return undef	if ( $a1->abs()->round( $dlen ) == 0 ) ;
+		#my $b1 = $x1->norm() * ( $a1 / $a1->abs() ) ;
+		my $b1 = $x1->norm() * $a1 ;
+		$b1 /= $a1->abs() unless ( $a1->abs()->round( $dlen ) == 0 ) ;
 		$v = $x1 - ( $b1 * $x1->unit_vector( undef , 0 ) ) ;
 	}
 
